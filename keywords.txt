@@ -1,0 +1,54 @@
+#######################################
+# Syntax Coloring Map For Lifx and LifxProducts
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+lifx_header	KEYWORD1
+lifx_payload_device_power	KEYWORD1
+lifx_payload_device_label	KEYWORD1
+lifx_payload_device_version	KEYWORD1
+lifx_payload_device_location	KEYWORD1
+lifx_payload_device_group	KEYWORD1
+lifx_payload_light_state	KEYWORD1
+lifx_payload_light_setcolor	KEYWORD1
+Device	KEYWORD1
+Lifx	KEYWORD1
+
+lifx_light_type	KEYWORD1
+lifx_zone_type	KEYWORD1
+lifx_types_struct	KEYWORD1
+lifx_types	KEYWORD1
+
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+DealWithReceivedMessage	KEYWORD2
+DeviceAddToArray	KEYWORD2
+DeviceCount	KEYWORD2
+GetIndexedDevice	KEYWORD2
+DiscoveryCompleteCallback	KEYWORD2
+DoDiscovery	KEYWORD2
+ReceivedMessage	KEYWORD2
+PrintDevices	KEYWORD2
+SendMessage	KEYWORD2
+SetBrightnessByGroup	KEYWORD2
+SetBrightnessByLabel	KEYWORD2
+SetDeviceBrightness	KEYWORD2
+SetColorByGroup	KEYWORD2
+SetColorByLabel	KEYWORD2
+SetDeviceColor	KEYWORD2
+SetDevicePower	KEYWORD2
+SetPowerByGroup	KEYWORD2
+SetPowerByLabel	KEYWORD2
+StartDiscovery	KEYWORD2
+StartDeviceLightUpdate	KEYWORD2
+DeviceLightUpdateDone	KEYWORD2
+StateBrightnessByGroup	KEYWORD2
+StateBrightnessByLabel	KEYWORD2
+StatePowerByGroup	KEYWORD2
+StatePowerByLabel	KEYWORD2
+
+lifx_find_pid_index	KEYWORD2

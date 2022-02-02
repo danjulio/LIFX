@@ -17,20 +17,23 @@
 /* along with this library. If not, see <http://www.gnu.org/licenses/>. */
 /*                                                                      */
 /* Written by Peter Humphrey July 2021.                                 */
+/* Support for color devices and other features on ESP32 by Dan Julio   */
+/* Jan 2022.                                                            */
 /************************************************************************/
 
 
 #include "Lifx.h"
+#include "LifxProducts.h"
+
+
+// Undefine for debugging
+//#define DEBUG
+
+
 
 Lifx::Lifx()
 {
-  //  UDP
-  _udp.begin(LIFX_PORT);          // Listen for incoming UDP packets
-
-  //  random seed for source number
-  randomSeed(analogRead(0));
- 
-  // Initialise header
+   // Initialise header
   memset(&_header, 0, sizeof(_header));
 
   //  Initialise payload
@@ -45,6 +48,20 @@ Lifx::Lifx()
   _header.sequence = 100;
 
   return;
+}
+
+void Lifx::begin() {
+  //  UDP
+  _udp.begin(LIFX_PORT);          // Listen for incoming UDP packets
+  
+  //  random seed for source number
+  #if defined(ESP8266)
+  randomSeed(analogRead(0));
+  #elif defined(ESP32)
+  randomSeed(analogRead(39));
+  #else
+  randomSeed(analogRead(A0));
+  #endif
 }
 
 void Lifx::loop() {
@@ -114,6 +131,10 @@ void Lifx::DoDiscovery() {
         break;
       
       case LIFX_DEVICE_STATELABEL:
+        SendMessage(LIFX_DEVICE_GETVERSION, _devices[_discoveryDeviceIndex]->MacAddress(), IPAddress(_devices[_discoveryDeviceIndex]->IpAddress()), 0);
+        break;
+      
+      case LIFX_DEVICE_STATEVERSION:
         SendMessage(LIFX_DEVICE_GETLOCATION, _devices[_discoveryDeviceIndex]->MacAddress(), IPAddress(_devices[_discoveryDeviceIndex]->IpAddress()), 0);
         break;
       
@@ -170,6 +191,10 @@ void Lifx::DealWithReceivedMessage(byte packet[], int packetLen, Device *device)
     case LIFX_DEVICE_STATELABEL:
       memcpy(device->Label, ((lifx_payload_device_label *)(packet + sizeof(lifx_header)))->label, 32);
       break;
+      
+    case LIFX_DEVICE_STATEVERSION:
+      device->Product=((lifx_payload_device_version *)(packet + sizeof(lifx_header)))->product;
+      break;
 
     case LIFX_DEVICE_STATELOCATION:
       memcpy(device->Location, ((lifx_payload_device_location *)(packet + sizeof(lifx_header)))->label, 32);
@@ -185,6 +210,7 @@ void Lifx::DealWithReceivedMessage(byte packet[], int packetLen, Device *device)
       device->Brightness = ((lifx_payload_light_state *)(packet + sizeof(lifx_header)))->brightness;
       device->Kelvin = ((lifx_payload_light_state *)(packet + sizeof(lifx_header)))->kelvin;
       device->Power = ((lifx_payload_light_state *)(packet + sizeof(lifx_header)))->power;
+      _lightUpdateUnderway = 0;
       break;
   }
 }
@@ -206,9 +232,9 @@ void Lifx::SendMessage(uint16_t messageType, byte *macAddress, IPAddress ipAddre
     
   // Send the packet
   _udp.beginPacket(ipAddress, LIFX_PORT);
-  _udp.write((char *) &_header, sizeof(lifx_header));
+  _udp.write((const uint8_t *) &_header, sizeof(lifx_header));
   if (payloadLen)
-    _udp.write((char *) &_payload, payloadLen);
+    _udp.write((const uint8_t *) &_payload, payloadLen);
   _udp.endPacket();
 
   #ifdef DEBUG
@@ -237,34 +263,75 @@ uint16_t Lifx::DeviceCount() {
   return _devices.size();
 }
 
+Device* Lifx::GetIndexedDevice(int n) {
+	return _devices[n];  // Make darn sure n is valid...
+}
+
 void Lifx::SetDevicePower(Device *dev, uint16_t power) {
+  _payload.power.level = power;
+  dev->Power = power;
   SendMessage(LIFX_DEVICE_SETPOWER, dev->MacAddress(), IPAddress(dev->IpAddress()), sizeof(lifx_payload_device_power));
 }
 
-void Lifx::SetDeviceBrightness(Device *dev, uint16_t brightness) {
-    _payload.setColor.hue  = dev->Hue;
-    _payload.setColor.saturation = dev->Saturation;
-    _payload.setColor.brightness = brightness;
-    _payload.setColor.kelvin = dev->Kelvin;
-    SendMessage(LIFX_LIGHT_SETCOLOR, dev->MacAddress(), IPAddress(dev->IpAddress()), sizeof(lifx_payload_light_setcolor));
+void Lifx::SetDeviceBrightness(Device *dev, uint16_t brightness, uint32_t duration) {
+  _payload.setColor.hue  = dev->Hue;
+  _payload.setColor.saturation = dev->Saturation;
+  _payload.setColor.brightness = brightness;
+  dev->Brightness = brightness;
+  _payload.setColor.kelvin = dev->Kelvin;
+  _payload.setColor.duration = duration;
+  SendMessage(LIFX_LIGHT_SETCOLOR, dev->MacAddress(), IPAddress(dev->IpAddress()), sizeof(lifx_payload_light_setcolor));
 }
 
-void Lifx::SetBrightnessByLabel(char *label, uint16_t brightness) {
+void Lifx::SetDeviceColor(Device *dev, uint16_t hue, uint16_t saturation, uint16_t brightness, uint16_t kelvin, uint32_t duration) {
+  _payload.setColor.hue  = hue;
+  dev->Hue = hue;
+  _payload.setColor.saturation = saturation;
+  dev->Saturation = saturation;
+  _payload.setColor.brightness = brightness;
+  dev->Brightness = brightness;
+  _payload.setColor.kelvin = kelvin;
+  dev->Kelvin = kelvin;
+  _payload.setColor.duration = duration;
+  SendMessage(LIFX_LIGHT_SETCOLOR, dev->MacAddress(), IPAddress(dev->IpAddress()), sizeof(lifx_payload_light_setcolor));
+}
+
+void Lifx::SetBrightnessByLabel(char *label, uint16_t brightness, uint32_t duration) {
   for(Device *dev: _devices)
   {
     if (strcmp(dev->Label,label) == 0)
     {
-      SetDeviceBrightness(dev, brightness);
+      SetDeviceBrightness(dev, brightness, duration);
     }
   }
 }
 
-void Lifx::SetBrightnessByGroup(char *group, uint16_t brightness) {
+void Lifx::SetBrightnessByGroup(char *group, uint16_t brightness, uint32_t duration) {
   for(Device *dev: _devices)
   {
     if (strcmp(dev->Group, group) == 0)
     {
-      SetDeviceBrightness(dev, brightness);
+      SetDeviceBrightness(dev, brightness, duration);
+    }
+  }
+}
+
+void Lifx::SetColorByGroup(char *group, uint16_t hue, uint16_t saturation, uint16_t brightness, uint16_t kelvin, uint32_t duration) {
+  for(Device *dev: _devices)
+  {
+    if (strcmp(dev->Group, group) == 0)
+    {
+      SetDeviceColor(dev, hue, saturation, brightness, kelvin, duration);
+    }
+  }
+}
+
+void Lifx::SetColorByLabel(char *label, uint16_t hue, uint16_t saturation, uint16_t brightness, uint16_t kelvin, uint32_t duration) {
+  for(Device *dev: _devices)
+  {
+    if (strcmp(dev->Label,label) == 0)
+    {
+      SetDeviceColor(dev, hue, saturation, brightness, kelvin, duration);
     }
   }
 }
@@ -286,6 +353,15 @@ void Lifx::SetPowerByLabel(char *label, uint16_t power) {
       //SendMessage(LIFX_DEVICE_SETPOWER, dev->MacAddress(), IPAddress(dev->IpAddress()), sizeof(lifx_payload_device_power));
       SetDevicePower(dev, power);
   }
+}
+
+void Lifx::StartDeviceLightUpdate(Device *dev) {
+  SendMessage(LIFX_LIGHT_GET, dev->MacAddress(), IPAddress(dev->IpAddress()), 0);
+  _lightUpdateUnderway = 1;
+}
+
+bool Lifx::DeviceLightUpdateDone() {
+  return _lightUpdateUnderway;
 }
 
 uint16_t Lifx::StatePowerByGroup(char *group) {
@@ -333,10 +409,12 @@ void Lifx::DiscoveryCompleteCallback(CallbackFunction f) {
 }
 
 void Lifx::PrintDevices() {
+  int i;
+  
   Serial.println("IP Address,MAC Address,Location,Group,Label,Power,Hue,Saturation,Brightness,Kelvin");
   for(Device *dev: _devices)
   {
-    Serial.printf("%s,%s,%s,%s,%s,%i,%i,%i,%i,%i\n",
+    Serial.printf("%s,%s,%s,%s,%s,%i,%i,%i,%i,%i",
       IPAddress(dev->IpAddress()).toString().c_str(),
       dev->MacAddressString(),
       dev->Location,
@@ -347,6 +425,13 @@ void Lifx::PrintDevices() {
       dev->Saturation,
       dev->Brightness,
       dev->Kelvin);
+
+    i = lifx_find_pid_index(dev->Product);
+    if (i >= 0) {
+      Serial.printf("->%d,%s\n", dev->Product, lifx_types[i].name);
+    } else {
+      Serial.printf("->%d,unknown\n", dev->Product);
+    }
   }
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////

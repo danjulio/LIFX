@@ -17,12 +17,14 @@
 /* along with this library. If not, see <http://www.gnu.org/licenses/>. */
 /*                                                                      */
 /* Written by Peter Humphrey July 2021.                                 */
+/* Support for color devices and other features on ESP32 by Dan Julio   */
+/* Jan 2022.                                                            */
 /************************************************************************/
 
 #include <stdint.h>
 #include <arduino.h>
 #include <vector>
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <WiFiUDP.h>
 
 
@@ -39,6 +41,8 @@
 #define LIFX_DEVICE_STATEPOWER 22
 #define LIFX_DEVICE_GETLABEL 23
 #define LIFX_DEVICE_STATELABEL 25
+#define LIFX_DEVICE_GETVERSION 32
+#define LIFX_DEVICE_STATEVERSION 33
 #define LIFX_DEVICE_GETLOCATION 48
 #define LIFX_DEVICE_STATELOCATION 50
 #define LIFX_DEVICE_GETGROUP 51
@@ -47,6 +51,7 @@
 #define LIFX_LIGHT_SETCOLOR 102
 #define LIFX_LIGHT_STATE 107
 #define LIFX_REDISCOVERY_INTERVAL 300000
+
 
 
 // The LIFX Header structure
@@ -84,6 +89,14 @@ typedef struct {
 typedef struct {
   char label[32];
 } lifx_payload_device_label;
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct {
+  uint32_t vendor;
+  uint32_t product;
+  uint32_t reserve1;
+} lifx_payload_device_version;
 #pragma pack(pop)
 
 #pragma pack(push, 1)
@@ -126,6 +139,8 @@ typedef struct {
 } lifx_payload_light_setcolor;
 #pragma pack(pop)
 
+
+
 class Device
 {
   public:
@@ -133,7 +148,7 @@ class Device
     byte *MacAddress();
     uint32_t IpAddress();
     char *MacAddressString();
-
+    uint32_t Product = 0;
     uint16_t Port = 0;
     uint16_t Power = 0;
     uint16_t Hue = 0;
@@ -150,28 +165,37 @@ class Device
     char _macString[19];
 };
 
+
+
 class Lifx
 {
   typedef void (*CallbackFunction) (Lifx&);
   
   public:
     Lifx();
+    void begin();
     void loop();
     void DealWithReceivedMessage(byte packet[], int packetLen, Device *device);  
     Device* DeviceAddToArray(byte macAddress[LIFX_MAC_LEN], IPAddress ipAddress);
     uint16_t DeviceCount();
+    Device* GetIndexedDevice(int n);
     void DiscoveryCompleteCallback(CallbackFunction f);
     void DoDiscovery();
     void ReceivedMessage(byte packet[], int packetLen);
     void PrintDevices();
     void SendMessage(uint16_t messageType, byte *macAddress, IPAddress ipAddress, int payloadLen);
-    void SetBrightnessByGroup(char *group, uint16_t brightness);
-    void SetBrightnessByLabel(char *label, uint16_t brightness);
-    void SetDeviceBrightness(Device *device, uint16_t brightness);
-    void SetDevicePower(Device *device, uint16_t power);
+    void SetBrightnessByGroup(char *group, uint16_t brightness, uint32_t duration = 0);
+    void SetBrightnessByLabel(char *label, uint16_t brightness, uint32_t duration = 0);
+    void SetDeviceBrightness(Device *dev, uint16_t brightness, uint32_t duration = 0);
+    void SetColorByGroup(char *group, uint16_t hue, uint16_t saturation, uint16_t brightness, uint16_t kelvin, uint32_t duration = 0);
+    void SetColorByLabel(char *label, uint16_t hue, uint16_t saturation, uint16_t brightness, uint16_t kelvin, uint32_t duration = 0);
+    void SetDeviceColor(Device *dev, uint16_t hue, uint16_t saturation, uint16_t brightness, uint16_t kelvin, uint32_t duration = 0);
+    void SetDevicePower(Device *dev, uint16_t power);
     void SetPowerByGroup(char *group, uint16_t power);
     void SetPowerByLabel(char *label, uint16_t power);
     void StartDiscovery();
+    void StartDeviceLightUpdate(Device *dev);
+    bool DeviceLightUpdateDone();
     uint16_t StateBrightnessByGroup(char *group);
     uint16_t StateBrightnessByLabel(char *label);
     uint16_t StatePowerByGroup(char *group);
@@ -192,6 +216,7 @@ class Lifx
     WiFiUDP _udp;
     CallbackFunction _discoveryCompleteFunction = NULL;
     bool _discoveryUnderway = 0;
+    bool _lightUpdateUnderway = 0;
     unsigned long _discoveryTimer;
     unsigned long _discoveryNextMsec;
     int _discoveryBroadcastCount;
