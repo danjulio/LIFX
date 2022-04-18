@@ -12,8 +12,9 @@
 
 extern "C" {
 
-// Light type (color capable, white with kelvin adjustment, on/off-only white)
-typedef enum {COLOR, ADJ_WHITE, WHITE} lifx_light_type;
+// Light type (color capable, white with kelvin adjustment, white with
+// brightness adjust, on/off-only relay)
+typedef enum {COLOR, ADJ_WHITE, WHITE, RELAY} lifx_light_type;
 
 // Zone types
 typedef enum {SINGLE, LINEAR, EXT_LINEAR, MATRIX, MATRIX_CHAIN} lifx_zone_type;
