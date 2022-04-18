@@ -22,10 +22,10 @@
 /************************************************************************/
 
 #include <stdint.h>
-#include <arduino.h>
+#include <Arduino.h>
 #include <vector>
 #include <WiFi.h>
-#include <WiFiUDP.h>
+#include <WiFiUdp.h>
 
 
 //#define DEBUG 1
